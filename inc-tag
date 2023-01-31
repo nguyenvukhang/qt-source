@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+latest=$(git for-each-ref --sort=-v:refname \
+  --count=1 \
+  'refs/tags/v[0-9]*.[0-9]*.[0-9]*' \
+  --format="%(refname:short)")
+
+let minor=${latest##*.} # after last dot
+prefix=${latest%.*} # before last dot
+let minor++ # increment minor
+next="${prefix}.${minor}"
+
+git tag $next

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+latest=$(git for-each-ref --sort=-v:refname \
+  --count=1 \
+  'refs/tags/v[0-9]*.[0-9]*.[0-9]*' \
+  --format="%(refname:short)")
+
+git tag -d $latest
+git tag $latest
+git push --force origin $latest

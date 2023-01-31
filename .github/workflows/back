@@ -1,0 +1,132 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+**"
+
+permissions:
+  contents: write
+
+env:
+  QT_OUTPUT_DIR_NAME: qt_output
+  QT_SRC_DIR_NAME: qt_src
+  QT_CFG_ARGS: -opensource -release -static -nomake examples -nomake tests -skip qt3d -skip qttranslations -skip qt5compat -skip qtactiveqt -skip qtcharts -skip qtcoap -skip qtconnectivity -skip qtdatavis3d -skip qtdeclarative -skip qtdoc -skip qthttpserver -skip qtlanguageserver -skip qtlottie -skip qtmqtt -skip qtmultimedia -skip qtnetworkauth -skip qtopcua -skip qtpositioning -skip qtquick3d -skip qtquick3dphysics -skip qtquicktimeline -skip qtremoteobjects -skip qtscxml -skip qtsensors -skip qtserialbus -skip qtserialport -skip qtshadertools -skip qtspeech -skip qtsvg -skip qttools -skip qtwebsockets
+
+jobs:
+  build-mac:
+    if: false
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2019]
+        version: [6.2.0, 6.2.1, 6.2.2, 6.2.3, 6.2.4]
+        # os: [macos-11, macos-12, windows-2019]
+        # version: [6.2.0, 6.2.1, 6.2.2, 6.2.3, 6.2.4, 6.3.0, 6.3.1, 6.3.2, 6.4.0, 6.4.1, 6.4.2]
+    defaults:
+      run:
+        shell: msys2 {0}
+    runs-on: ${{ matrix.os }}
+    steps:
+      # set environment variables
+      - run: |
+          echo "QT_SRC_DIR=${{ github.workspace }}/${{ env.QT_SRC_DIR_NAME }}">>$GITHUB_ENV
+          echo "QT_OUTPUT_DIR=${{ github.workspace }}/${{ env.QT_OUTPUT_DIR_NAME }}">>$GITHUB_ENV
+          echo "ASSET=qt-${{ matrix.version }}-${{ matrix.os }}.tar.gz">>$GITHUB_ENV
+        if: startsWith(matrix.os, 'windows') == false
+      - run: |
+          echo "QT_SRC_DIR=${{ github.workspace }}/${{ env.QT_SRC_DIR_NAME }}">>$env:GITHUB_ENV
+          echo "QT_OUTPUT_DIR=${{ github.workspace }}/${{ env.QT_OUTPUT_DIR_NAME }}">>$env:GITHUB_ENV
+          echo "ASSET=qt-${{ matrix.version }}-${{ matrix.os }}.tar.gz">>$env:GITHUB_ENV
+          Add-Content $env:GITHUB_PATH 'C:/ProgramData/Chocolatey/bin'
+          Add-Content $env:GITHUB_PATH 'C:/Strawberry/perl/bin'
+          Add-Content $env:GITHUB_PATH 'C:/hostedtoolcache/windows/Ruby/2.5.9/x64/bin'
+          Add-Content $env:GITHUB_PATH 'C:/hostedtoolcache/windows/Python/3.7.9/x64/bin'
+          Add-Content $env:GITHUB_PATH 'C:/Program Files/CMake/bin'
+          Add-Content $env:GITHUB_PATH 'C:/ProgramData/chocolatey/lib/zstandard/tools'
+          Add-Content $env:GITHUB_PATH 'C:/ProgramData/chocolatey/lib/mingw/tools/install/mingw64/bin'
+        if: startsWith(matrix.os , 'windows')
+
+      # install ninja
+      - run: brew install ninja
+        if: startsWith(matrix.os, 'macos')
+      - run: choco install ninja mingw zstandard
+        if: startsWith(matrix.os, 'windows')
+
+      - run: git clone https://code.qt.io/qt/qt5.git -b v${{ matrix.version }} ${{ env.QT_SRC_DIR }}
+
+      - run: perl init-repository -f --module-subset=qtbase
+        working-directory: ${{ env.QT_SRC_DIR }}
+
+      - run: ./configure -prefix ${{ env.QT_OUTPUT_DIR }} ${{ env.QT_CFG_ARGS }}
+        working-directory: ${{ env.QT_SRC_DIR }}
+        if: startsWith(matrix.os, 'windows') == false
+
+      - run: |
+          ./configure.bat -prefix ${{ env.QT_OUTPUT_DIR }} `
+          ${{ env.QT_CFG_ARGS }} `
+          -platform win32-g++ `
+          -- -G 'MinGW Makefiles'
+        working-directory: ${{ env.QT_SRC_DIR }}
+        if: startsWith(matrix.os, 'windows')
+
+      - run: ninja -j6 && ninja install
+        working-directory: ${{ env.QT_SRC_DIR }}
+
+      - run: tar -zcvf ${{ env.ASSET }} ${{ env.QT_OUTPUT_DIR_NAME }}
+        working-directory: ${{ env.QT_OUTPUT_DIR }}/..
+
+      - uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ env.ASSET }}
+          generate_release_notes: true
+  build-win64:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2019]
+        version: [6.2.0, 6.2.1, 6.2.2, 6.2.3, 6.2.4]
+    defaults:
+      run:
+        shell: msys2 {0}
+    runs-on: ${{ matrix.os }}
+    steps:
+      # set environment variables
+      - run: cd 'C:/msys64' && ls
+      - run: |
+          echo "QT_SRC_DIR=${{ github.workspace }}/${{ env.QT_SRC_DIR_NAME }}">>$env:GITHUB_ENV
+          echo "QT_OUTPUT_DIR=${{ github.workspace }}/${{ env.QT_OUTPUT_DIR_NAME }}">>$env:GITHUB_ENV
+          echo "ASSET=qt-${{ matrix.version }}-${{ matrix.os }}.tar.gz">>$env:GITHUB_ENV
+          Add-Content $env:GITHUB_PATH 'C:/ProgramData/Chocolatey/bin'
+          Add-Content $env:GITHUB_PATH 'C:/Strawberry/perl/bin'
+          Add-Content $env:GITHUB_PATH 'C:/hostedtoolcache/windows/Ruby/2.5.9/x64/bin'
+          Add-Content $env:GITHUB_PATH 'C:/hostedtoolcache/windows/Python/3.7.9/x64/bin'
+          Add-Content $env:GITHUB_PATH 'C:/Program Files/CMake/bin'
+
+      # install ninja
+      - run: pacman -S ninja
+
+      - run: git clone https://code.qt.io/qt/qt5.git -b v${{ matrix.version }} ${{ env.QT_SRC_DIR }}
+
+      - run: perl init-repository -f --module-subset=qtbase
+        working-directory: ${{ env.QT_SRC_DIR }}
+
+      - run: |
+          ./configure.bat -prefix ${{ env.QT_OUTPUT_DIR }} `
+          ${{ env.QT_CFG_ARGS }} `
+          -platform win32-g++ `
+          -- -G 'MinGW Makefiles'
+        working-directory: ${{ env.QT_SRC_DIR }}
+
+      - run: ninja -j6 && ninja install
+        working-directory: ${{ env.QT_SRC_DIR }}
+
+      - run: tar -zcvf ${{ env.ASSET }} ${{ env.QT_OUTPUT_DIR_NAME }}
+        working-directory: ${{ env.QT_OUTPUT_DIR }}/..
+
+      - uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ env.ASSET }}
+          generate_release_notes: true
